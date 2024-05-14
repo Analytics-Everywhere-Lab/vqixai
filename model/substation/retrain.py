@@ -202,7 +202,7 @@ if __name__ == '__main__':
 
         # Save the logs
         train_loss_log.append(train_logs['DiceLoss'])
-        train_iou_log.append(train_logs['IoU'])
+        train_iou_log.append(train_logs['iou_score'])
 
         if i == 25:
             optimizer.param_groups[0]['lr'] = 1e-5
