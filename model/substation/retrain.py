@@ -15,8 +15,9 @@ from segmentation_models_pytorch.utils.train import TrainEpoch
 DATA_DIR = "data/substation/ds"
 TRAIN_DIR = f"../../data/substation/train"
 TEST_DIR = f"../../data/substation/test"
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-EPOCH = 1000
+DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
+print(DEVICE)
+EPOCH = 100
 x_train_dir = os.path.join(TRAIN_DIR, 'img')
 y_train_dir = os.path.join(TRAIN_DIR, 'ann')
 x_valid_dir = os.path.join(TEST_DIR, 'img')
@@ -44,29 +45,17 @@ class Dataset(BaseDataset):
         self.preprocessing = preprocessing
 
     def __getitem__(self, i):
-        img_fp = self.imgs_fps[i]
-        mask_fp = self.masks_fps[i]
-
-        img = cv2.imread(img_fp)
-        if img is None:
-            print(f"Warning: Image not found or unable to read: {img_fp}")
-            return None, None
-
+        img = cv2.imread(self.imgs_fps[i])
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        with open(self.masks_fps[i], 'r') as f:
+            mask_data = json.load(f)
+            img_size = (mask_data['size']['height'], mask_data['size']['width'])
 
-        try:
-            with open(mask_fp, 'r') as f:
-                mask_data = json.load(f)
-                img_size = (mask_data['size']['height'], mask_data['size']['width'])
-
-            mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-            for obj in mask_data['objects']:
-                if obj['classTitle'] in CLASSES:
-                    class_index = CLASSES.index(obj['classTitle'])
-                    mask = cv2.fillPoly(mask, np.array([obj['points']['exterior']]), class_index)
-        except Exception as e:
-            print(f"Warning: Error processing mask for {img_fp}: {e}")
-            return None, None
+        mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
+        for object in mask_data['objects']:
+            if object['classTitle'] in CLASSES:
+                class_index = CLASSES.index(object['classTitle'])
+                mask = cv2.fillPoly(mask, np.array([object['points']['exterior']]), class_index)
 
         if self.augmentation:
             sample = self.augmentation(image=img, mask=mask)
@@ -159,7 +148,7 @@ if __name__ == '__main__':
         encoder_weights=ENCODER_WEIGHTS,
         classes=len(CLASSES),
         activation=ACTIVATIONS,
-    ).to(DEVICE)
+    )
 
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
 
@@ -179,6 +168,10 @@ if __name__ == '__main__':
         preprocessing=get_preprocessing(preprocessing_fn),
     )
 
+    # Print number of samples in train and test datasets
+    print('Number of samples in train dataset:', len(train_dataset))
+    print('Number of samples in test dataset:', len(test_dataset))
+
     loss = NamedDiceLoss(mode='multiclass')
     metrics = [
         IoU(threshold=0.5),
@@ -197,7 +190,7 @@ if __name__ == '__main__':
         verbose=True,
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4, collate_fn=lambda x: x)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
 
     # Lists to store the logs
     train_loss_log = []
@@ -205,32 +198,11 @@ if __name__ == '__main__':
 
     for i in range(EPOCH):
         print(f"Epoch: {i}")
-        train_loss = 0
-        train_iou = 0
-        sample_count = 0
+        train_logs = train_epoch.run(train_loader)
 
-        for batch in train_loader:
-            # Filter out None samples
-            batch = [sample for sample in batch if sample[0] is not None]
-
-            if not batch:
-                continue
-
-            x, y = zip(*batch)
-            x = torch.stack(x).to(DEVICE)
-            y = torch.stack(y).to(DEVICE)
-
-            logs = train_epoch.batch_update(x, y)
-            train_loss += logs['DiceLoss'] * len(x)
-            train_iou += logs['IoU'] * len(x)
-            sample_count += len(x)
-
-        if sample_count > 0:
-            train_loss /= sample_count
-            train_iou /= sample_count
-
-        train_loss_log.append(train_loss)
-        train_iou_log.append(train_iou)
+        # Save the logs
+        train_loss_log.append(train_logs['DiceLoss'])
+        train_iou_log.append(train_logs['IoU'])
 
         if i == 25:
             optimizer.param_groups[0]['lr'] = 1e-5
