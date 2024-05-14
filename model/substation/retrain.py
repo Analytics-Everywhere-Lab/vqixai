@@ -15,8 +15,9 @@ from segmentation_models_pytorch.utils.train import TrainEpoch
 DATA_DIR = "data/substation/ds"
 TRAIN_DIR = f"../../data/substation/train"
 TEST_DIR = f"../../data/substation/test"
-DEVICE = 'cuda'
-EPOCH = 1000
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(DEVICE)
+EPOCH = 100
 x_train_dir = os.path.join(TRAIN_DIR, 'img')
 y_train_dir = os.path.join(TRAIN_DIR, 'ann')
 x_valid_dir = os.path.join(TEST_DIR, 'img')

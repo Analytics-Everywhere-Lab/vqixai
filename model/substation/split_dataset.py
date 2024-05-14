@@ -1,5 +1,6 @@
 import cv2
 import os
+import tqdm
 import json
 from sklearn.model_selection import train_test_split
 
@@ -27,7 +28,8 @@ def load_data():
 def save_data(data, dir):
     if not os.path.exists(dir):
         os.makedirs(dir)
-    for img, ann, img_path, ann_path in data:
+    # tqdm
+    for img, ann, img_path, ann_path in tqdm.tqdm(data):
         img_name = img_path.split("/")[-1]
         ann_name = ann_path.split("/")[-1]
         cv2.imwrite(f"{dir}/img/{img_name}", img)
