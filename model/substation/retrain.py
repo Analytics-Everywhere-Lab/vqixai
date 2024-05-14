@@ -15,7 +15,7 @@ from segmentation_models_pytorch.utils.train import TrainEpoch
 DATA_DIR = "data/substation/ds"
 TRAIN_DIR = f"../../data/substation/train"
 TEST_DIR = f"../../data/substation/test"
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
 print(DEVICE)
 EPOCH = 100
 x_train_dir = os.path.join(TRAIN_DIR, 'img')
@@ -45,7 +45,13 @@ class Dataset(BaseDataset):
         self.preprocessing = preprocessing
 
     def __getitem__(self, i):
-        img = cv2.imread(self.imgs_fps[i])
+        img_fp = self.imgs_fps[i]
+        mask_fp = self.masks_fps[i]
+
+        img = cv2.imread(img_fp)
+        if img is None:
+            raise ValueError(f"Image not found or unable to read: {img_fp}")
+
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         with open(self.masks_fps[i], 'r') as f:
             mask_data = json.load(f)
@@ -168,6 +174,10 @@ if __name__ == '__main__':
         preprocessing=get_preprocessing(preprocessing_fn),
     )
 
+    # Print number of samples in train and test datasets
+    print('Number of samples in train dataset:', len(train_dataset))
+    print('Number of samples in test dataset:', len(test_dataset))
+
     loss = NamedDiceLoss(mode='multiclass')
     metrics = [
         IoU(threshold=0.5),
@@ -194,7 +204,11 @@ if __name__ == '__main__':
 
     for i in range(EPOCH):
         print(f"Epoch: {i}")
-        train_logs = train_epoch.run(train_loader)
+        try:
+            train_logs = train_epoch.run(train_loader)
+        except ValueError as e:
+            print(f"Skipping a problematic sample: {e}")
+            continue
 
         # Save the logs
         train_loss_log.append(train_logs['DiceLoss'])
