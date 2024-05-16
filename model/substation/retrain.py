@@ -209,7 +209,7 @@ if __name__ == '__main__':
             print('Decrease decoder learning rate to 1e-5!')
 
     # Save the model
-    torch.save(model, './model.pth')
+    torch.save(model, 'model_ResNet101.pth')
     print('Model saved!')
 
     # Save the logs for future use
