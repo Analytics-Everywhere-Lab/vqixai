@@ -3,21 +3,23 @@ import os
 import cv2
 import json
 import albumentations as albu
+from PIL import Image, ImageDraw
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from pytorch_grad_cam import GradCAM
 from torch.utils.data import DataLoader
 from segmentation_models_pytorch.utils.metrics import IoU
 from segmentation_models_pytorch.losses import DiceLoss
 from torch.utils.data import Dataset as BaseDataset
-from segmentation_models_pytorch.utils.train import TrainEpoch, ValidEpoch
+from segmentation_models_pytorch.utils.train import TrainEpoch
 
-from model.substation.retrain import Dataset, get_validation_augmentation, get_preprocessing, preprocessing_fn, \
-    visualize
+from model.semantic_segmentation_target import SemanticSegmentationTarget
+from model.substation.retrain import Dataset, get_training_augmentation, get_preprocessing, visualize
 
 DATA_DIR = "data/substation/ds"
-TRAIN_DIR = f"../../data/substation/train"
-TEST_DIR = f"../../data/substation/test"
+TRAIN_DIR = "data/substation/train"
+TEST_DIR = "data/substation/test"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
 print(DEVICE)
 EPOCH = 100
@@ -34,33 +36,60 @@ CLASSES = ['breaker', 'closed_blade_disconnect_switch', 'closed_tandem_disconnec
 ENCODER = 'resnet101'
 ENCODER_WEIGHTS = 'imagenet'
 ACTIVATIONS = 'softmax2d'
+XAI_METHODS = ["GradCAM", "GradCAMPlusPlus", "EigenCAM", "EigenGradCAM", "ScoreCAM", "HiResCAM", "AblationCAM",
+               "XGradCAM"]
 
 if __name__ == "__main__":
+    category = "porcelain_pin_insulator"
+    category_idx = CLASSES.index(category)
+
+    model = smp.DeepLabV3Plus(
+        encoder_name=ENCODER,
+        encoder_weights=ENCODER_WEIGHTS,
+        classes=len(CLASSES),
+        activation=ACTIVATIONS,
+    )
+
+    preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
+
     loss = DiceLoss(mode='multiclass')
     metrics = [
         IoU(threshold=0.5),
     ]
 
-    model = torch.load('model_ResNet101.pth')
+    model = torch.load('model/substation/model_ResNet101.pth')
 
     test_dataset_vis = Dataset(
-        x_valid_dir, y_valid_dir,
-        classes=CLASSES,
+        x_valid_dir,
+        y_valid_dir,
+        classes=[category],
+        augmentation=get_training_augmentation(),
+        preprocessing=get_preprocessing(preprocessing_fn),
     )
-    for i in range(5):
-        n = np.random.choice(len(test_dataset_vis))
 
-        image_vis = test_dataset_vis[n][0].astype('uint8')
-        image, gt_mask = test_dataset_vis[n]
+    n = np.random.choice(len(test_dataset_vis))
 
-        gt_mask = gt_mask.squeeze()
+    image_vis = test_dataset_vis[n][0].cpu().numpy().astype('uint8').transpose(1, 2, 0)
+    rgb_img = np.float32(image_vis) / 255
+    image, gt_mask = test_dataset_vis[n]
 
-        x_tensor = torch.from_numpy(image).to(DEVICE).unsqueeze(0)
-        pr_mask = model.predict(x_tensor)
-        pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+    gt_mask = gt_mask.squeeze()
 
-        visualize(
-            image=image_vis,
-            ground_truth_mask=gt_mask,
-            predicted_mask=pr_mask
-        )
+    x_tensor = image.to(DEVICE).unsqueeze(0)  # No need to use from_numpy since image is already a tensor
+    pr_mask = model.predict(x_tensor)
+    pr_mask = (pr_mask.squeeze().cpu().numpy().round())
+    pr_mask = pr_mask.argmax(axis=0)
+
+    visualize(
+        image=rgb_img,
+        ground_truth_mask=gt_mask.cpu().numpy(),  # Convert gt_mask to numpy for visualization
+        predicted_mask=pr_mask
+    )
+
+    target_layer = model.decoder.blocks[-1]
+
+    with GradCAM(model=model, target_layers=[target_layer], use_cuda=torch.cuda.is_available()) as cam:
+        grayscale_cam = cam(input_tensor=x_tensor)[0, :]
+        cam_image = cam.show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+    explanation = Image.fromarray(cam_image)
+    explanation.show()
