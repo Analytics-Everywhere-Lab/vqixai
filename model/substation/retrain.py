@@ -13,11 +13,11 @@ from torch.utils.data import Dataset as BaseDataset
 from segmentation_models_pytorch.utils.train import TrainEpoch
 
 DATA_DIR = "data/substation/ds"
-TRAIN_DIR = f"../../data/substation/train"
-TEST_DIR = f"../../data/substation/test"
+TRAIN_DIR = f"data/substation/train"
+TEST_DIR = f"data/substation/test"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
 print(DEVICE)
-EPOCH = 100
+EPOCH = 1000
 x_train_dir = os.path.join(TRAIN_DIR, 'img')
 y_train_dir = os.path.join(TRAIN_DIR, 'ann')
 x_valid_dir = os.path.join(TEST_DIR, 'img')
@@ -47,15 +47,19 @@ class Dataset(BaseDataset):
     def __getitem__(self, i):
         img = cv2.imread(self.imgs_fps[i])
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
         with open(self.masks_fps[i], 'r') as f:
             mask_data = json.load(f)
-            img_size = (mask_data['size']['height'], mask_data['size']['width'])
+            # img_size = (mask_data['size']['height'], mask_data['size']['width'])
 
         mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
         for object in mask_data['objects']:
             if object['classTitle'] in CLASSES:
                 class_index = CLASSES.index(object['classTitle'])
-                mask = cv2.fillPoly(mask, np.array([object['points']['exterior']]), class_index)
+                if class_index in self.class_values:
+                    mask = cv2.fillPoly(mask, np.array([object['points']['exterior']]), class_index)
+                else:
+                    print(f"Class {object['classTitle']} not in classes list, skipping")
 
         if self.augmentation:
             sample = self.augmentation(image=img, mask=mask)
@@ -65,7 +69,6 @@ class Dataset(BaseDataset):
             sample = self.preprocessing(image=img, mask=mask)
             img, mask = sample['image'], sample['mask']
 
-        # Convert to PyTorch tensors
         img = torch.from_numpy(img).float()
         mask = torch.from_numpy(mask).long()
 
@@ -73,9 +76,6 @@ class Dataset(BaseDataset):
 
     def __len__(self):
         return len(self.ids)
-
-
-dataset = Dataset(x_train_dir, y_train_dir, classes=CLASSES)
 
 
 # helper function for data visualization
@@ -87,6 +87,7 @@ def visualize(**images):
         plt.subplot(1, n, i + 1)
         plt.xticks([])
         plt.yticks([])
+        print(name.split('_'))
         plt.title(' '.join(name.split('_')).title())
         plt.imshow(image)
     plt.show()
@@ -95,7 +96,34 @@ def visualize(**images):
 def get_training_augmentation():
     """Add paddings to make image shape divisible by 16 and resize to a fixed size."""
     train_transform = [
+        albu.HorizontalFlip(p=0.5),
+        albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
         albu.PadIfNeeded(min_height=None, min_width=None, pad_height_divisor=16, pad_width_divisor=16),
+        albu.GaussNoise(p=0.2),
+        albu.Perspective(p=0.5),
+        albu.OneOf(
+            [
+                albu.CLAHE(p=1),
+                albu.RandomBrightnessContrast(p=1),
+                albu.RandomGamma(p=1),
+            ],
+            p=0.9,
+        ),
+        albu.OneOf(
+            [
+                albu.Sharpen(p=1),
+                albu.Blur(blur_limit=3, p=1),
+                albu.MotionBlur(blur_limit=3, p=1),
+            ],
+            p=0.9,
+        ),
+        albu.OneOf(
+            [
+                albu.RandomBrightnessContrast(p=1),
+                albu.HueSaturationValue(p=1),
+            ],
+            p=0.9,
+        ),
         albu.Resize(height=256, width=256)
     ]
     return albu.Compose(train_transform)
@@ -213,23 +241,29 @@ if __name__ == '__main__':
     print('Model saved!')
 
     # Save the logs for future use
-    np.save('train_loss_log.npy', train_loss_log)
-    np.save('train_iou_log.npy', train_iou_log)
+    np.save('train_loss_log_aug.npy', train_loss_log)
+    np.save('train_iou_log_aug.npy', train_iou_log)
 
-    # Plot the logs
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1)
-    plt.plot(train_loss_log, label='Train Loss')
-    plt.title('Train Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
+    # Plot different metrics
+    plt.figure(figsize=(6, 6))
+    plt.rcParams.update({'font.size': 16})
+    plt.plot(train_loss_log, marker='o', markersize=5, markevery=10, markerfacecolor='red')
+    plt.xlabel('Epochs')
+    plt.ylabel('Dice Loss')
+    plt.grid(True)
 
-    plt.subplot(1, 2, 2)
-    plt.plot(train_iou_log, label='Train IoU')
-    plt.title('Train IoU')
-    plt.xlabel('Epoch')
-    plt.ylabel('IoU')
-    plt.legend()
+    # Save the plot
+    plt.savefig("DLv3PLoss.pdf")
+    plt.show()
+
+    plt.figure(figsize=(6, 6))
+    plt.rcParams.update({'font.size': 16})
+    plt.plot(train_iou_log, marker='s', markersize=5, markevery=10, markerfacecolor='blue')
+    plt.xlabel('Epochs')
+    plt.ylabel('IoU Score')
+    plt.grid(True)
+
+    # Save the plot
+    plt.savefig("DLv3PIoU.pdf")
 
     plt.show()

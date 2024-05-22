@@ -5,3 +5,4 @@ numpy~=1.23.0
 matplotlib~=3.7.1
 segmentation_models_pytorch
 scikit-learn
+grad-cam
