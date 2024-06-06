@@ -36,7 +36,7 @@ ACTIVATIONS = 'softmax2d'
 class Dataset(BaseDataset):
     def __init__(self, images_dir, masks_dir, classes=None, augmentation=None, preprocessing=None):
         self.ids = os.listdir(images_dir)
-        self.imgs_fps = [os.path.join(images_dir, img_id) for img_id in self.ids]
+        self.imgs_fps = [os.path.join(images_dir, img_id + '.png') for img_id in self.ids]
         self.masks_fps = [os.path.join(masks_dir, img_id + '.json') for img_id in self.ids]
 
         self.class_values = [CLASSES.index(cls.lower()) for cls in classes]

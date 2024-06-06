@@ -1,0 +1,126 @@
+{
+    "classes": [
+        {
+            "title": "breaker",
+            "shape": "polygon",
+            "color": "#797979",
+            "geometry_config": {},
+            "id": 6461442,
+            "hotkey": ""
+        },
+        {
+            "title": "closed_blade_disconnect_switch",
+            "shape": "polygon",
+            "color": "#6110A2",
+            "geometry_config": {},
+            "id": 6461439,
+            "hotkey": ""
+        },
+        {
+            "title": "closed_tandem_disconnect_switch",
+            "shape": "polygon",
+            "color": "#3061A5",
+            "geometry_config": {},
+            "id": 6461441,
+            "hotkey": ""
+        },
+        {
+            "title": "current_transformer",
+            "shape": "polygon",
+            "color": "#8A8A00",
+            "geometry_config": {},
+            "id": 6461450,
+            "hotkey": ""
+        },
+        {
+            "title": "fuse_disconnect_switch",
+            "shape": "polygon",
+            "color": "#FF61B2",
+            "geometry_config": {},
+            "id": 6461443,
+            "hotkey": ""
+        },
+        {
+            "title": "glass_disc_insulator",
+            "shape": "polygon",
+            "color": "#9A2079",
+            "geometry_config": {},
+            "id": 6461444,
+            "hotkey": ""
+        },
+        {
+            "title": "lightning_arrester",
+            "shape": "polygon",
+            "color": "#8FD3FF",
+            "geometry_config": {},
+            "id": 6461447,
+            "hotkey": ""
+        },
+        {
+            "title": "muffle",
+            "shape": "polygon",
+            "color": "#A2F3A2",
+            "geometry_config": {},
+            "id": 6461446,
+            "hotkey": ""
+        },
+        {
+            "title": "open_blade_disconnect_switch",
+            "shape": "polygon",
+            "color": "#A200FF",
+            "geometry_config": {},
+            "id": 6461438,
+            "hotkey": ""
+        },
+        {
+            "title": "open_tandem_disconnect_switch",
+            "shape": "polygon",
+            "color": "#51A200",
+            "geometry_config": {},
+            "id": 6461440,
+            "hotkey": ""
+        },
+        {
+            "title": "porcelain_pin_insulator",
+            "shape": "polygon",
+            "color": "#FFFF7D",
+            "geometry_config": {},
+            "id": 6461445,
+            "hotkey": ""
+        },
+        {
+            "title": "potential_transformer",
+            "shape": "polygon",
+            "color": "#A23000",
+            "geometry_config": {},
+            "id": 6461451,
+            "hotkey": ""
+        },
+        {
+            "title": "power_transformer",
+            "shape": "polygon",
+            "color": "#FFB600",
+            "geometry_config": {},
+            "id": 6461449,
+            "hotkey": ""
+        },
+        {
+            "title": "recloser",
+            "shape": "polygon",
+            "color": "#2800BA",
+            "geometry_config": {},
+            "id": 6461448,
+            "hotkey": ""
+        },
+        {
+            "title": "tripolar_disconnect_switch",
+            "shape": "polygon",
+            "color": "#A20060",
+            "geometry_config": {},
+            "id": 6461452,
+            "hotkey": ""
+        }
+    ],
+    "tags": [],
+    "projectType": "images"
+}
