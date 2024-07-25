@@ -1,42 +1,23 @@
-import segmentation_models_pytorch as smp
-import os
-import cv2
 import json
+
 import albumentations as albu
-import torch
-import numpy as np
+import cv2
 import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader
-from segmentation_models_pytorch.utils.metrics import IoU
+import numpy as np
+import segmentation_models_pytorch as smp
 from segmentation_models_pytorch.losses import DiceLoss
-from torch.utils.data import Dataset as BaseDataset
+from segmentation_models_pytorch.utils.metrics import IoU
 from segmentation_models_pytorch.utils.train import TrainEpoch
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 
-DATA_DIR = "data/substation/ds"
-TRAIN_DIR = f"data/substation/train"
-TEST_DIR = f"data/substation/test"
-DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
-print(DEVICE)
-EPOCH = 1000
-x_train_dir = os.path.join(TRAIN_DIR, 'img')
-y_train_dir = os.path.join(TRAIN_DIR, 'ann')
-x_valid_dir = os.path.join(TEST_DIR, 'img')
-y_valid_dir = os.path.join(TEST_DIR, 'ann')
-
-CLASSES = ['breaker', 'closed_blade_disconnect_switch', 'closed_tandem_disconnect_switch', 'current_transformer',
-           'fuse_disconnect_switch', 'glass_disc_insulator', 'lightning_arrester', 'muffle',
-           'open_blade_disconnect_switch', 'open_tandem_disconnect_switch', 'porcelain_pin_insulator',
-           'potential_transformer', 'power_transformer', 'recloser', 'tripolar_disconnect_switch']
-
-ENCODER = 'resnet101'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATIONS = 'softmax2d'
+from model.substation.utils import *
 
 
-class Dataset(BaseDataset):
+class SubstationDataset(Dataset):
     def __init__(self, images_dir, masks_dir, classes=None, augmentation=None, preprocessing=None):
         self.ids = os.listdir(images_dir)
-        self.imgs_fps = [os.path.join(images_dir, img_id + '.png') for img_id in self.ids]
+        self.imgs_fps = [os.path.join(images_dir, img_id) for img_id in self.ids]
         self.masks_fps = [os.path.join(masks_dir, img_id + '.json') for img_id in self.ids]
 
         self.class_values = [CLASSES.index(cls.lower()) for cls in classes]
@@ -78,7 +59,12 @@ class Dataset(BaseDataset):
         return len(self.ids)
 
 
-# helper function for data visualization
+class NamedDiceLoss(DiceLoss):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__name__ = "DiceLoss"
+
+
 def visualize(**images):
     """PLot images in one row."""
     n = len(images)
@@ -163,12 +149,6 @@ def get_preprocessing(preprocessing_fn):
     return albu.Compose(_transform)
 
 
-class NamedDiceLoss(DiceLoss):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__name__ = "DiceLoss"
-
-
 if __name__ == '__main__':
     # Initialize the model
     model = smp.DeepLabV3Plus(
@@ -180,7 +160,7 @@ if __name__ == '__main__':
 
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
 
-    train_dataset = Dataset(
+    train_dataset = SubstationDataset(
         x_train_dir,
         y_train_dir,
         classes=CLASSES,
@@ -188,7 +168,7 @@ if __name__ == '__main__':
         preprocessing=get_preprocessing(preprocessing_fn),
     )
 
-    test_dataset = Dataset(
+    test_dataset = SubstationDataset(
         x_valid_dir,
         y_valid_dir,
         classes=CLASSES,
@@ -224,7 +204,7 @@ if __name__ == '__main__':
     train_loss_log = []
     train_iou_log = []
 
-    for i in range(EPOCH):
+    for i in range(EPOCHS):
         print(f"Epoch: {i}")
         train_logs = train_epoch.run(train_loader)
 

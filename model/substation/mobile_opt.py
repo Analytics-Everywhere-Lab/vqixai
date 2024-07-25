@@ -1,17 +1,7 @@
-import torch
 from torch import nn
 from torch.nn.utils import prune
 
-CLASSES = ['breaker', 'closed_blade_disconnect_switch', 'closed_tandem_disconnect_switch', 'current_transformer',
-           'fuse_disconnect_switch', 'glass_disc_insulator', 'lightning_arrester', 'muffle',
-           'open_blade_disconnect_switch', 'open_tandem_disconnect_switch', 'porcelain_pin_insulator',
-           'potential_transformer', 'power_transformer', 'recloser', 'tripolar_disconnect_switch']
-
-ENCODER = 'resnet101'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATIONS = 'softmax2d'
-
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+from model.substation.utils import *
 
 if __name__ == "__main__":
     model = torch.load('model/substation/model_ResNet101.pth', map_location=DEVICE)
@@ -56,4 +46,3 @@ if __name__ == "__main__":
     # Print size in MB
     effective_size_bytes /= 1024 * 1024
     print("Pruned size of model (MB):", effective_size_bytes)
-

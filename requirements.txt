@@ -4,5 +4,7 @@ torch~=2.1.0.dev20230520
 numpy~=1.23.0
 matplotlib~=3.7.1
 segmentation_models_pytorch
-scikit-learn
+scikit-learn~=1.2.2
 grad-cam
+tqdm~=4.65.0
+pillow~=9.5.0
