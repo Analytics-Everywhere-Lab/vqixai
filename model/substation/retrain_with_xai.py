@@ -9,7 +9,7 @@ from segmentation_models_pytorch.losses import DiceLoss
 from segmentation_models_pytorch.utils.metrics import IoU
 from segmentation_models_pytorch.utils.train import TrainEpoch, ValidEpoch
 from torch.utils.data import DataLoader
-from torch.utils.data import Dataset as BaseDataset
+from torch.utils.data import Dataset
 import torch
 import torch.nn.functional as F
 from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, HiResCAM
@@ -18,10 +18,8 @@ from tqdm import tqdm
 from model.semantic_segmentation_target import SemanticSegmentationTarget
 from model.substation.utils import *
 
-print("Training XAI REG")
 
-
-class Dataset(BaseDataset):
+class SubstationDataset(Dataset):
     def __init__(self, images_dir, masks_dir, classes=CLASSES, augmentation=None, preprocessing=None):
         self.ids = os.listdir(images_dir)
         self.imgs_fps = [os.path.join(images_dir, img_id) for img_id in self.ids]
@@ -265,11 +263,13 @@ if __name__ == '__main__':
 
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
     # Dataset and DataLoader setup
-    train_dataset = Dataset(x_train_dir, y_train_dir, classes=CLASSES, augmentation=get_training_augmentation(),
-                            preprocessing=get_preprocessing(preprocessing_fn))
+    train_dataset = SubstationDataset(x_train_dir, y_train_dir, classes=CLASSES,
+                                      augmentation=get_training_augmentation(),
+                                      preprocessing=get_preprocessing(preprocessing_fn))
     train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12)
-    val_dataset = Dataset(x_valid_dir, y_valid_dir, classes=CLASSES, augmentation=get_validation_augmentation(),
-                          preprocessing=get_preprocessing(preprocessing_fn))
+    val_dataset = SubstationDataset(x_valid_dir, y_valid_dir, classes=CLASSES,
+                                    augmentation=get_validation_augmentation(),
+                                    preprocessing=get_preprocessing(preprocessing_fn))
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
 
     print('Number of samples in train dataset:', len(train_dataset))
