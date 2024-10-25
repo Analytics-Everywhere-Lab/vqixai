@@ -1,5 +1,4 @@
-# XAI-integrated Visual Quality Inspection
-
+![img.png](img.png)
 ## Introduction
 
 This repository contains the code for the paper "XEdgeAI: A Human-centered Industrial Inspection Framework with
