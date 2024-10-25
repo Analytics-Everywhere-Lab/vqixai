@@ -4,7 +4,7 @@ from torch.nn.utils import prune
 from model.substation.config import *
 
 if __name__ == "__main__":
-    model = torch.load('model/substation/model_ResNet101.pth', map_location=DEVICE)
+    model = torch.load(MODEL_PATH, map_location=DEVICE)
     model.to(DEVICE)
     model.eval()
 

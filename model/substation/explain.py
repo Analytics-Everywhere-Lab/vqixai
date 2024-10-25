@@ -1,40 +1,15 @@
-import os
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import segmentation_models_pytorch as smp
-import torch
-from pytorch_grad_cam import *
+
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from segmentation_models_pytorch.losses import DiceLoss
 from segmentation_models_pytorch.utils.metrics import IoU
 
 from model.semantic_segmentation_target import SemanticSegmentationTarget
-from model.substation.retrain import Dataset, get_training_augmentation, get_preprocessing, visualize
-
-DATA_DIR = "data/substation/ds"
-TRAIN_DIR = "data/substation/train"
-TEST_DIR = "data/substation/test"
-INFERENCE_DIR = "data/substation/inference"
-DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
-print(DEVICE)
-EPOCH = 100
-x_train_dir = os.path.join(TRAIN_DIR, 'img')
-y_train_dir = os.path.join(TRAIN_DIR, 'ann')
-x_valid_dir = os.path.join(TEST_DIR, 'img')
-y_valid_dir = os.path.join(TEST_DIR, 'ann')
-
-CLASSES = ['breaker', 'closed_blade_disconnect_switch', 'closed_tandem_disconnect_switch', 'current_transformer',
-           'fuse_disconnect_switch', 'glass_disc_insulator', 'lightning_arrester', 'muffle',
-           'open_blade_disconnect_switch', 'open_tandem_disconnect_switch', 'porcelain_pin_insulator',
-           'potential_transformer', 'power_transformer', 'recloser', 'tripolar_disconnect_switch']
-
-ENCODER = 'resnet101'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATIONS = 'softmax2d'
-XAI_METHODS = [GradCAM, GradCAMPlusPlus, EigenCAM, EigenGradCAM, ScoreCAM, HiResCAM, AblationCAM, XGradCAM, LayerCAM,
-               FullGrad]
+from model.substation.retrain import SubstationDataset, get_training_augmentation, get_preprocessing, visualize
+from model.substation.config import *
 
 
 def save_image(image, filename):
@@ -66,7 +41,7 @@ if __name__ == "__main__":
     model = torch.load('model/substation/model_ResNet101.pth')
     model.eval()
 
-    test_dataset_vis = Dataset(
+    test_dataset_vis = SubstationDataset(
         x_valid_dir,
         y_valid_dir,
         classes=[category],
@@ -101,13 +76,11 @@ if __name__ == "__main__":
         targets = [SemanticSegmentationTarget(category_idx, pr_mask_filtered)]
 
         for xai_method in XAI_METHODS:
-            with xai_method(model=model, target_layers=[target_layer]) as cam:
-                grayscale_cam = cam(input_tensor=x_tensor, targets=targets)[0, :]
-                cam_image = show_cam_on_image(raw_img, grayscale_cam, use_rgb=True)
 
-                # Save the XAI method result
-                xai_method_name = xai_method.__name__
-                save_image(cam_image, f"{INFERENCE_DIR}/image_{n}_{xai_method_name}.png")
+
+            # Save the XAI method result
+            xai_method_name = xai_method.__name__
+            save_image(cam_image, f"{INFERENCE_DIR}/image_{n}_{xai_method_name}.png")
 
         # Overlay masks on the raw image
         gt_overlay = overlay_mask_on_image(raw_img, gt_mask_filtered, color=[0, 255, 0])  # Green for GT

@@ -1,10 +1,9 @@
-import json
-
 import cv2
-from sklearn.model_selection import train_test_split
+import os
+import json
 from tqdm import tqdm
-
-from model.substation.config import *
+from sklearn.model_selection import train_test_split
+from model.ttpla.config import *
 
 
 def load_data():

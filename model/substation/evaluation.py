@@ -1,32 +1,10 @@
-import os
-
 import numpy as np
 import segmentation_models_pytorch as smp
 import torch
 from segmentation_models_pytorch.utils.metrics import IoU
 from torch.utils.data import DataLoader
-
-from model.substation.retrain import Dataset, get_preprocessing, get_validation_augmentation
-
-DATA_DIR = "data/substation/ds"
-TRAIN_DIR = "data/substation/train"
-TEST_DIR = "data/substation/test"
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'  # Updated to ensure compatibility
-print(f"Using device: {DEVICE}")
-EPOCH = 100
-x_train_dir = os.path.join(TRAIN_DIR, 'img')
-y_train_dir = os.path.join(TRAIN_DIR, 'ann')
-x_valid_dir = os.path.join(TEST_DIR, 'img')
-y_valid_dir = os.path.join(TEST_DIR, 'ann')
-
-CLASSES = ['breaker', 'closed_blade_disconnect_switch', 'closed_tandem_disconnect_switch', 'current_transformer',
-           'fuse_disconnect_switch', 'glass_disc_insulator', 'lightning_arrester', 'muffle',
-           'open_blade_disconnect_switch', 'open_tandem_disconnect_switch', 'porcelain_pin_insulator',
-           'potential_transformer', 'power_transformer', 'recloser', 'tripolar_disconnect_switch']
-
-ENCODER = 'resnet101'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATIONS = 'softmax2d'
+from model.substation.config import *
+from model.substation.retrain import SubstationDataset, get_preprocessing, get_validation_augmentation
 
 
 def calculate_iou(model, dataloader, device, classes):
@@ -66,11 +44,11 @@ def calculate_iou(model, dataloader, device, classes):
 if __name__ == "__main__":
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
 
-    model = torch.load('model/substation/model_ResNet101.pth', map_location=DEVICE)
+    model = torch.load('model/substation/model_ResNet101_aug.pth', map_location=DEVICE)
     model.to(DEVICE)
     model.eval()
 
-    test_dataset = Dataset(
+    test_dataset = SubstationDataset(
         x_valid_dir,
         y_valid_dir,
         classes=CLASSES,

@@ -16,7 +16,7 @@ from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, HiResCAM
 from tqdm import tqdm
 
 from model.semantic_segmentation_target import SemanticSegmentationTarget
-from model.substation.utils import *
+from model.substation.config import *
 
 
 class SubstationDataset(Dataset):

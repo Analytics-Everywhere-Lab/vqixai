@@ -1,44 +1,16 @@
-import segmentation_models_pytorch as smp
-import os
 import cv2
-import json
-import albumentations as albu
-from PIL import Image, ImageDraw
-import torch
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import os
+import segmentation_models_pytorch as smp
+import torch
 from pytorch_grad_cam import *
-from pytorch_grad_cam.utils.image import show_cam_on_image
-from torch.utils.data import DataLoader
-from segmentation_models_pytorch.utils.metrics import IoU
 from segmentation_models_pytorch.losses import DiceLoss
-from torch.utils.data import Dataset as BaseDataset
-from segmentation_models_pytorch.utils.train import TrainEpoch
-
+from segmentation_models_pytorch.utils.metrics import IoU
+from model.substation.config import *
 from model.semantic_segmentation_target import SemanticSegmentationTarget
-from model.substation.retrain import Dataset, get_training_augmentation, get_preprocessing, visualize, \
+from model.substation.retrain import SubstationDataset, get_preprocessing, visualize, \
     get_validation_augmentation
-
-DATA_DIR = "data/substation/ds"
-TRAIN_DIR = "data/substation/train"
-TEST_DIR = "data/substation/test"
-INFERENCE_DIR = "data/substation/inference"
-EXAMPLE_DIR = "data/substation/example"
-DEVICE = 'cuda' if torch.cuda.is_available() else 'mps'
-print(DEVICE)
-x_train_dir = os.path.join(TRAIN_DIR, 'img')
-y_train_dir = os.path.join(TRAIN_DIR, 'ann')
-x_valid_dir = os.path.join(TEST_DIR, 'img')
-y_valid_dir = os.path.join(TEST_DIR, 'ann')
-
-CLASSES = ['breaker', 'closed_blade_disconnect_switch', 'closed_tandem_disconnect_switch', 'current_transformer',
-           'fuse_disconnect_switch', 'glass_disc_insulator', 'lightning_arrester', 'muffle',
-           'open_blade_disconnect_switch', 'open_tandem_disconnect_switch', 'porcelain_pin_insulator',
-           'potential_transformer', 'power_transformer', 'recloser', 'tripolar_disconnect_switch']
-
-ENCODER = 'resnet101'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATIONS = 'softmax2d'
 
 
 def save_image(image, filename):
@@ -71,7 +43,7 @@ if __name__ == "__main__":
     model = torch.load('model/substation/model_ResNet101.pth')
     model.eval()
 
-    test_dataset_vis = Dataset(
+    test_dataset_vis = SubstationDataset(
         x_train_dir,
         y_train_dir,
         classes=[category],

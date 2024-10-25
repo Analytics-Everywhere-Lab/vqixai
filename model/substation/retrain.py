@@ -1,5 +1,5 @@
 import json
-
+import os
 import albumentations as albu
 import cv2
 import matplotlib.pyplot as plt
@@ -8,10 +8,9 @@ import segmentation_models_pytorch as smp
 from segmentation_models_pytorch.losses import DiceLoss
 from segmentation_models_pytorch.utils.metrics import IoU
 from segmentation_models_pytorch.utils.train import TrainEpoch
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-
-from model.substation.utils import *
+from torch.utils.data import DataLoader, Dataset
+from model.substation.config import *
+from utils import DEVICE
 
 
 class SubstationDataset(Dataset):
