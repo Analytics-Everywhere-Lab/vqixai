@@ -1,15 +1,17 @@
 import cv2
+import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import segmentation_models_pytorch as smp
-
-from pytorch_grad_cam.utils.image import show_cam_on_image
 from segmentation_models_pytorch.losses import DiceLoss
 from segmentation_models_pytorch.utils.metrics import IoU
 
+from explainer.cam import cam_explainer
+from explainer.rise import rise_explainer
 from model.semantic_segmentation_target import SemanticSegmentationTarget
-from model.substation.retrain import SubstationDataset, get_training_augmentation, get_preprocessing, visualize
 from model.substation.config import *
+from model.substation.retrain import SubstationDataset, get_training_augmentation, get_preprocessing, visualize
+from utils import DEVICE
 
 
 def save_image(image, filename):
@@ -27,8 +29,7 @@ def overlay_mask_on_image(image, mask, color, alpha=0.01):
     return overlay
 
 
-if __name__ == "__main__":
-    category = "recloser"
+def explain_for_a_category(category):
     category_idx = CLASSES.index(category)
 
     preprocessing_fn = smp.encoders.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
@@ -76,11 +77,21 @@ if __name__ == "__main__":
         targets = [SemanticSegmentationTarget(category_idx, pr_mask_filtered)]
 
         for xai_method in XAI_METHODS:
-
+            xai_method_name = xai_method.__name__
+            if xai_method_name == "RISE":
+                explanation_map = rise_explainer(model=model,
+                                                 input_image=raw_img,
+                                                 target_cat_idx=category_idx)
+            else:
+                explanation_map = cam_explainer(xai_method=xai_method,
+                                                model=model,
+                                                x_tensor=x_tensor,
+                                                raw_img=raw_img,
+                                                target_layer=target_layer,
+                                                targets=targets)
 
             # Save the XAI method result
-            xai_method_name = xai_method.__name__
-            save_image(cam_image, f"{INFERENCE_DIR}/image_{n}_{xai_method_name}.png")
+            save_image(explanation_map, f"{INFERENCE_DIR}/image_{n}_{xai_method_name}.png")
 
         # Overlay masks on the raw image
         gt_overlay = overlay_mask_on_image(raw_img, gt_mask_filtered, color=[0, 255, 0])  # Green for GT
@@ -104,3 +115,8 @@ if __name__ == "__main__":
         # Calculate IoU
         iou_score = metrics[0](pr_mask_tensor, gt_mask_tensor).item()
         print(f"Image {n} IoU Score: {iou_score}")
+
+
+if __name__ == "__main__":
+    category = "recloser" # Change to your desired category to be explained
+    explain_for_a_category(category)

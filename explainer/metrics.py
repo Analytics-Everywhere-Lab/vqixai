@@ -1,133 +1,297 @@
-import math
 import numpy as np
 import cv2
 import torch
-import torchvision
-from scipy import spatial
+import torch.nn.functional as F
 from tqdm import trange
-from tool import bbox_iou
-
-kernel_width = 0.25
+from matplotlib import pyplot as plt
 
 
+# Function to compute normalized Area Under Curve
 def auc(arr):
-    '''Returns normalized Area Under Curve of the array.'''
-    return (arr.sum() - arr[0] / 2 - arr[-1] / 2) / (arr.shape[0] - 1)  # auc formula
+    """
+    Returns normalized Area Under Curve of the array.
+    arr: type(np.ndarray) - shape:[n]
+    """
+    return (arr.sum() - arr[0] / 2 - arr[-1] / 2) / (arr.shape[0] - 1)
 
 
-def causal_metric(model, img, bbox, saliency_map, mode, step, kernel_width=0.25):
-    '''
-    model: type(nn.Module)
-    img: type(np.ndarray) - shape:[H, W, 3]
-    bbox: type(tensor) - shape:[num_boxes, (4 + 1 + num_classes + 1)] - Predicted bboxes
-    saliency_map: type(np.ndarray) - shape:[num_boxes, H, W]
-    mode: type(str) - Select deletion or insertion metric ('del' or 'ins')
-    step: number of pixels modified per one iteration
-    kernel_width: (0-1) - Control parameter (default=0.25)
-    Return: deletion/insertion metric and number of objects.
-    '''
-    del_ins = np.zeros(80)
-    count = np.zeros(80)
-    HW = saliency_map.shape[1] * saliency_map.shape[2]
-    n_steps = (HW + step - 1) // step
-    for idx in range(saliency_map.shape[0]):
-        target_cls = bbox[idx][-1]
-        if mode == 'del':
-            start = img.copy()
-            finish = np.zeros_like(start)
-        else:
-            start = cv2.GaussianBlur(img, (51, 51), 0)
-            finish = img.copy()
-        salient_order = np.flip(np.argsort(saliency_map[idx].reshape(HW, -1), axis=0), axis=0)
-        y = salient_order // img.shape[1]
-        x = salient_order - y * img.shape[1]
-        scores = np.zeros(n_steps + 1)
+# Plausibility Metrics
+
+def ebpg_metric(gt_mask, saliency_map, target_class):
+    """
+    Compute the EBPG metric for segmentation.
+
+    Parameters:
+    - gt_mask: Ground truth mask, shape [H, W], with class labels.
+    - saliency_map: Saliency map, shape [H, W], saliency values.
+    - target_class: The class label for which to compute the metric.
+
+    Returns:
+    - ebpg_value: The EBPG value.
+    """
+    # Create a binary mask where the ground truth is equal to the target class
+    gt_binary_mask = (gt_mask == target_class).astype(np.float32)
+
+    # Sum of saliency map over the ground truth region
+    energy_inside = np.sum(saliency_map * gt_binary_mask)
+
+    # Total sum of saliency map
+    total_energy = np.sum(saliency_map)
+
+    # Handle division by zero
+    if total_energy == 0:
+        ebpg_value = 0.0
+    else:
+        ebpg_value = energy_inside / total_energy
+
+    return ebpg_value
+
+
+def iou_metric(gt_mask, saliency_map, target_class, threshold=0.5):
+    """
+    Compute the IoU between the saliency map and the ground truth mask for the target class.
+
+    Parameters:
+    - gt_mask: Ground truth mask, shape [H, W], with class labels.
+    - saliency_map: Saliency map, shape [H, W], saliency values.
+    - target_class: The class label for which to compute the metric.
+    - threshold: Threshold to binarize the saliency map.
+
+    Returns:
+    - iou_value: The IoU value.
+    """
+    # Threshold the saliency map to create a binary mask
+    saliency_binary_mask = (saliency_map >= threshold * np.max(saliency_map)).astype(np.float32)
+
+    # Create a binary mask where the ground truth is equal to the target class
+    gt_binary_mask = (gt_mask == target_class).astype(np.float32)
+
+    # Compute intersection and union
+    intersection = np.logical_and(saliency_binary_mask, gt_binary_mask).sum()
+    union = np.logical_or(saliency_binary_mask, gt_binary_mask).sum()
+
+    if union == 0:
+        iou_value = 0.0
+    else:
+        iou_value = intersection / union
+
+    return iou_value
+
+
+def bbox_metric(gt_mask, saliency_map, target_class, threshold=0.5):
+    """
+    Compute the IoU between the bounding boxes of the saliency map and the ground truth mask for the target class.
+
+    Parameters:
+    - gt_mask: Ground truth mask, shape [H, W], with class labels.
+    - saliency_map: Saliency map, shape [H, W], saliency values.
+    - target_class: The class label for which to compute the metric.
+    - threshold: Threshold to binarize the saliency map.
+
+    Returns:
+    - bbox_iou_value: The IoU of the bounding boxes.
+    """
+    # Threshold the saliency map to create a binary mask
+    saliency_binary_mask = (saliency_map >= threshold * np.max(saliency_map)).astype(np.uint8)
+
+    # Create a binary mask where the ground truth is equal to the target class
+    gt_binary_mask = (gt_mask == target_class).astype(np.uint8)
+
+    # Find bounding boxes
+    # For saliency map
+    saliency_coords = cv2.findNonZero(saliency_binary_mask)
+    if saliency_coords is not None:
+        x, y, w, h = cv2.boundingRect(saliency_coords)
+        saliency_bbox = [x, y, x + w, y + h]
+    else:
+        saliency_bbox = [0, 0, 0, 0]
+
+    # For ground truth
+    gt_coords = cv2.findNonZero(gt_binary_mask)
+    if gt_coords is not None:
+        x, y, w, h = cv2.boundingRect(gt_coords)
+        gt_bbox = [x, y, x + w, y + h]
+    else:
+        gt_bbox = [0, 0, 0, 0]
+
+    # Compute IoU of bounding boxes
+    xA = max(saliency_bbox[0], gt_bbox[0])
+    yA = max(saliency_bbox[1], gt_bbox[1])
+    xB = min(saliency_bbox[2], gt_bbox[2])
+    yB = min(saliency_bbox[3], gt_bbox[3])
+
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+
+    boxAArea = (saliency_bbox[2] - saliency_bbox[0]) * (saliency_bbox[3] - saliency_bbox[1])
+    boxBArea = (gt_bbox[2] - gt_bbox[0]) * (gt_bbox[3] - gt_bbox[1])
+
+    unionArea = boxAArea + boxBArea - interArea
+
+    if unionArea == 0:
+        bbox_iou_value = 0.0
+    else:
+        bbox_iou_value = interArea / unionArea
+
+    return bbox_iou_value
+
+
+# Faithfulness Metrics
+
+def faithfulness_metrics(model, img, gt_mask, saliency_map, target_class, mode, step):
+    """
+    Compute deletion or insertion metrics for segmentation models.
+
+    Parameters:
+    - model: Segmentation model.
+    - img: Input image, shape [H, W, 3].
+    - gt_mask: Ground truth mask, shape [H, W], with class labels.
+    - saliency_map: Saliency map, shape [H, W], saliency values.
+    - target_class: The class label for which to compute the metric.
+    - mode: 'del' or 'ins'.
+    - step: Number of pixels modified per iteration.
+
+    Returns:
+    - auc_value: The AUC of h_i over steps.
+    - h_i_values: The h_i values over steps.
+    """
+    H, W = saliency_map.shape
+
+    # Flatten saliency map and get indices sorted in decreasing order of saliency
+    saliency_flat = saliency_map.flatten()
+    indices = np.argsort(-saliency_flat)
+
+    # Number of steps
+    n_steps = (H * W + step - 1) // step
+
+    # Prepare modified image
+    if mode == 'del':
+        # Start with the original image
+        modified_img = img.copy()
+        # The baseline is zero (black pixels)
+        baseline = np.zeros_like(img)
+    elif mode == 'ins':
+        # Start with a blurred image
+        modified_img = cv2.GaussianBlur(img, (11, 11), 0)
+        # The baseline is the original image
+        baseline = img.copy()
+    else:
+        raise ValueError("Mode must be 'del' or 'ins'")
+
+    h_i_values = []
+
+    for i in range(n_steps + 1):
+        # Prepare input tensor
+        input_tensor = torch.from_numpy(modified_img.transpose(2, 0, 1)).unsqueeze(0).float()
+        input_tensor = input_tensor.to(next(model.parameters()).device)
+
+        # Pass through model
         with torch.no_grad():
-            for i in range(n_steps + 1):
-                temp_ious = []
-                temp_score = []
-                torch_start = torch.from_numpy(start.transpose(2, 0, 1)).unsqueeze(0).float()
-                out = model(torch_start.cuda())
-                p_box, index = postprocess(out, num_classes=80, conf_thre=0.25, nms_thre=0.45, class_agnostic=True)
-                p_box = p_box[0]
-                if p_box is None:
-                    scores[i] = 0
-                else:
-                    for b in p_box:
-                        sample_cls = b[-1]
-                        sample_box = b[:4]
-                        sample_score = b[5:-1]
-                        iou = torchvision.ops.box_iou(sample_box[:4].unsqueeze(0),
-                                                      bbox[idx][:4].unsqueeze(0)).cpu().item()
-                        distances = spatial.distance.cosine(sample_score.cpu(), bbox[idx][5:-1].cpu())
-                        weights = math.sqrt(math.exp(-(distances ** 2) / kernel_width ** 2))
-                        if target_cls != sample_cls:
-                            iou = 0
-                            sample_score = torch.tensor(0.)
-                        temp_ious.append(iou)
-                        s_score = iou * weights
-                        temp_score.append(s_score)
-                    max_score = temp_score[np.argmax(temp_ious)]
-                    scores[i] = max_score
-                x_coords = x[step * i:step * (i + 1), :]
-                y_coords = y[step * i:step * (i + 1), :]
-                start[y_coords, x_coords, :] = finish[y_coords, x_coords, :]
-        del_ins[int(target_cls)] += auc(scores)
-        count[int(target_cls)] += 1
-    return del_ins, count
+            output = model(input_tensor)
 
-
-def metric(bbox, saliency_map):
-    '''
-    bbox:  type(np.ndarray) - shape:[num_boxes, (4 + 1 + num_classes + 1)] - The ground-truth box matches the prediction box
-    saliency_map: type(np.ndarray) - shape:[num_boxes, H, W]
-    Return: EBPG/PG metric and number of objects.
-    '''
-    empty = np.zeros_like(saliency_map)
-    proportion = np.zeros(80)
-    count_idx = np.zeros(80)
-    pg = np.zeros(80)
-    for idx in range(bbox.shape[0]):
-        x1, y1, x2, y2 = bbox[idx][:4]
-        max_point = np.where(saliency_map[idx] == np.max(saliency_map[idx]))
-        cls = int(bbox[idx][-1])
-        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        if x1 <= max_point[1][0] <= x2 and y1 <= max_point[0][0] <= y2:
-            pg[cls] += 1
-        empty[idx][y1:y2, x1:x2] = 1
-        mask_bbox = saliency_map[idx] * empty[idx]
-        energy_bbox = mask_bbox.sum()
-        energy_whole = saliency_map[idx].sum()
-        if energy_whole == 0:
-            proportion[cls] += 0
-            count_idx[cls] += 1
+        # Get predicted mask
+        if isinstance(output, dict) and 'out' in output:
+            pred_mask = output['out'].squeeze(0).cpu().numpy()
         else:
-            proportion[cls] += energy_bbox / energy_whole
-            count_idx[cls] += 1
-    return proportion, pg, count_idx
+            pred_mask = output.squeeze(0).cpu().numpy()
+
+        # Get predicted class probabilities
+        if pred_mask.ndim == 3:
+            # Multiple classes
+            pred_probs = F.softmax(torch.from_numpy(pred_mask), dim=0).numpy()
+            pred_class_mask = np.argmax(pred_probs, axis=0)
+        else:
+            # Binary segmentation
+            pred_probs = torch.sigmoid(torch.from_numpy(pred_mask)).numpy()
+            pred_class_mask = (pred_probs >= 0.5).astype(np.int)
+
+        # Compute h_i, e.g., IoU between predicted mask and gt_mask for target_class
+        pred_binary_mask = (pred_class_mask == target_class).astype(np.uint8)
+        gt_binary_mask = (gt_mask == target_class).astype(np.uint8)
+
+        intersection = np.logical_and(pred_binary_mask, gt_binary_mask).sum()
+        union = np.logical_or(pred_binary_mask, gt_binary_mask).sum()
+        if union == 0:
+            h_i = 0.0
+        else:
+            h_i = intersection / union
+
+        h_i_values.append(h_i)
+
+        if i == n_steps:
+            break
+
+        # Modify the image for the next step
+        idx = indices[step * i: step * (i + 1)]
+        coords = np.unravel_index(idx, (H, W))
+
+        if mode == 'del':
+            # Set the pixels to baseline (black)
+            modified_img[coords[0], coords[1], :] = baseline[coords[0], coords[1], :]
+        else:
+            # Restore the pixels from baseline (original image)
+            modified_img[coords[0], coords[1], :] = baseline[coords[0], coords[1], :]
+
+    # Compute AUC
+    h_i_array = np.array(h_i_values)
+    auc_value = auc(h_i_array)
+
+    return auc_value, h_i_values
 
 
-def correspond_box(predictbox, groundtruthboxes):
-    '''
-    predictbox: type(np.ndarray) - shape:[num_boxes, (4 + 1 + num_classes + 1)] - Predicted bounding boxes
-    groundtruthboxes: type(np.ndarray) - shape:[num_boxes, (4 + 1 + num_classes + 1)] - Ground-truth bounding boxes
-    Return: The ground-truth box matches the prediction box and the corresponding index of the prediction box.
-    '''
-    gt_boxs = []
-    det = np.zeros(len(groundtruthboxes))
-    idx_predictbox = []
-    for d in range(len(predictbox)):
-        iouMax = 0
-        for i in range(len(groundtruthboxes)):
-            if predictbox[d][-1] != groundtruthboxes[i][-1]:
-                continue
-            iou = bbox_iou(predictbox[d][:4], groundtruthboxes[i][:4])
-            if iou > iouMax:
-                iouMax = iou
-                index = i
-        if iouMax > 0.5:
-            if det[index] == 0:
-                det[index] == 1
-                gt_boxs.append(groundtruthboxes[index])
-                idx_predictbox.append(d)
-    return np.array(gt_boxs), idx_predictbox
+if __name__ == "__main__":
+    # Test the metrics
+    import segmentation_models_pytorch as smp
+
+    # Assume you have a trained segmentation model
+    model = smp.DeepLabV3Plus(
+        encoder_name='resnet101',
+        encoder_weights='imagenet',
+        classes=5,  # Number of classes in your dataset
+        activation=None,
+    )
+    model.eval()
+    model.to('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Load an example image and ground truth mask
+    # Replace 'image_path' and 'mask_path' with your actual paths
+    image = cv2.imread('image_path')  # Shape [H, W, 3]
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    gt_mask = cv2.imread('mask_path', cv2.IMREAD_GRAYSCALE)  # Shape [H, W]
+
+    # Assume you have a saliency map for the target class
+    # For demonstration, we create a random saliency map
+    saliency_map = np.random.rand(gt_mask.shape[0], gt_mask.shape[1])
+
+    # Define the target class label
+    target_class = 1  # Replace with your target class label
+
+    # Compute Plausibility Metrics
+    ebpg_value = ebpg_metric(gt_mask, saliency_map, target_class)
+    iou_value = iou_metric(gt_mask, saliency_map, target_class)
+    bbox_iou_value = bbox_metric(gt_mask, saliency_map, target_class)
+
+    print(f"EBPG: {ebpg_value}")
+    print(f"IoU: {iou_value}")
+    print(f"Bbox IoU: {bbox_iou_value}")
+
+    # Compute Faithfulness Metrics
+    deletion_auc, deletion_h_i = faithfulness_metrics(
+        model, image, gt_mask, saliency_map, target_class, mode='del', step=500
+    )
+    insertion_auc, insertion_h_i = faithfulness_metrics(
+        model, image, gt_mask, saliency_map, target_class, mode='ins', step=500
+    )
+
+    print(f"Deletion AUC: {deletion_auc}")
+    print(f"Insertion AUC: {insertion_auc}")
+
+    # Plot the Deletion and Insertion Curves
+    plt.figure(figsize=(8, 6))
+    plt.plot(np.linspace(0, 1, len(deletion_h_i)), deletion_h_i, label='Deletion')
+    plt.plot(np.linspace(0, 1, len(insertion_h_i)), insertion_h_i, label='Insertion')
+    plt.xlabel('Fraction of Pixels Modified')
+    plt.ylabel('IoU with Ground Truth')
+    plt.title('Faithfulness Metrics')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
